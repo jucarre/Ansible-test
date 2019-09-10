@@ -1,0 +1,166 @@
+---
+- hosts: vb
+
+  vars:
+    server_name: superbob.l
+    php_version: '7.2'
+    php_versions_install_recommends: false
+    symfony_root_dir: /var/www/html/project
+    symfony_console_path: "{{ symfony_root_dir }}/bin/console"
+    symfony_web_dir: "{{ symfony_root_dir }}/public"
+    symfony_var_dir: "{{ symfony_root_dir }}/var"
+
+  pre_tasks:
+    - name: Install python for Ansible
+      become: true
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+
+  tasks:
+    - name: Upgrade installed packages
+      become: true
+      apt:
+        update_cache: yes
+        name: aptitude
+        force_apt_get: yes
+
+    - name: Install low-level utilities
+      become: true
+      apt:
+        name:
+          - zip
+          - unzip
+
+    - name: Install Git VCS
+      become: true
+      apt:
+        name: git
+        state: latest
+
+    - name: Install Nginx web server
+      become: true
+      apt:
+        name: nginx
+        state: latest
+
+    - name: Add PHP 7 PPA repository
+      become: true
+      apt_repository:
+        repo: 'ppa:ondrej/php'
+
+    - name: Install PHP
+      become: true
+      apt:
+        update_cache: yes
+        name:
+          - "php{{ php_version }}-cli"
+        state: present
+
+    - name: Install PHP packages
+      become: true
+      apt:
+        name:
+          - "php{{ php_version }}-common"
+          - "php{{ php_version }}-zip"
+          - "php{{ php_version }}-curl"
+          - "php{{ php_version }}-fpm"
+          - "php{{ php_version }}-intl"
+          - "php{{ php_version }}-mysql"
+          - "php{{ php_version }}-json"
+          - "php{{ php_version }}-xml"
+          - "php{{ php_version }}-sqlite3"
+          - "php{{ php_version }}-mbstring"
+          - "libapache2-mod-php{{ php_version }}"
+        state: latest
+      notify: Restart PHP-FPM
+
+    - name: Set date.timezone for PHP
+      become: true
+      ini_file:
+        dest: "/etc/php/{{ php_version }}/{{ item.env }}/php.ini"
+        section: Date
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      with_items:
+        - { env: fpm, option: date.timezone, value: Europe/Berlin }
+        - { env: cli, option: date.timezone, value: Europe/Berlin }
+        - { env: fpm, option: max_execution_time, value: 60 }
+        - { env: cli, option: max_execution_time, value: 60 }
+        - { env: fpm, option: memory_limit, value: 512M }
+      notify: Restart PHP-FPM
+
+    - name: Create project directory and set its permissions
+      become: true
+      file:
+        path: "{{ symfony_root_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: yes
+
+    - name: Checkout Git repository
+      git:
+        repo: https://github.com/symfony/demo.git
+        dest: "{{ symfony_root_dir }}"
+        force: yes
+
+    - name: Download Composer
+      script: scripts/install_composer.sh
+
+    - name: Move Composer globally
+      become: true
+      command: mv composer.phar /usr/local/bin/composer
+
+    - name: Set permissions on Composer
+      become: true
+      file:
+        path: /usr/local/bin/composer
+        mode: "a+x"
+
+    - name: Install Composer's dependencies
+      composer:
+        working_dir: "{{ symfony_root_dir }}"
+        no_dev: no
+
+    - name: Switch Symfony Demo to Mode Prod
+      command: '{{ symfony_console_path }} cache:clear --env=prod --no-debug'
+
+    - name: Add Symfony config template to the Nginx available sites
+      become: true
+      template:
+        src: templates/symfony.conf
+        dest: "/etc/nginx/sites-available/{{ server_name }}.conf"
+
+    - name: Enable Symfony config template from Nginx available sites
+      become: true
+      file:
+        src: "/etc/nginx/sites-available/{{ server_name }}.conf"
+        dest: "/etc/nginx/sites-enabled/{{ server_name }}.conf"
+        state: link
+      notify: Restart Nginx
+
+    - name: Add enabled Nginx site to /etc/hosts
+      become: true
+      lineinfile:
+        dest: /etc/hosts
+        regexp: "{{ server_name }}"
+        line: "127.0.0.1 {{ server_name }}"
+
+    - name: Fix var directory permissions
+      file:
+        path: "{{ symfony_var_dir }}"
+        state: directory
+        mode: 0777
+        recurse: yes
+
+  handlers:
+    - name: Restart Nginx
+      become: true
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Restart PHP-FPM
+      become: true
+      service:
+        name: "php{{ php_version }}-fpm"
+        state: restarted
