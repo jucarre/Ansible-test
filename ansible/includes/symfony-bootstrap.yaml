@@ -3,11 +3,22 @@
   composer:
     working_dir: "{{ symfony_root_dir }}"
     no_dev: "{{ 'yes' if('prod' == symfony_env) else 'no' }}"
+  #when: code_changed
   tags:
     - deploy
 
+- name: Fix var directory permissions
+  file:
+    path: "{{ symfony_var_dir }}"
+    state: directory
+    mode: 0777
+    recurse: yes
+  tags:
+    - permissions
+    - deploy
+
 - name: Switch Symfony Demo to Mode Prod and Clear cache
-  command: '{{ symfony_console_path }} cache:clear --env={{ symfony_env }}'
+  command: '{{ symfony_console_path }} cache:clear --env={{ symfony_env }} --'
   changed_when: false
   tags:
     - deploy

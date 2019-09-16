@@ -2,8 +2,7 @@
 - hosts: vb
 
   vars:
-    server_name: superbob.l
-    php_version: '7.2'
+    php_version: '7.3'
     php_versions_install_recommends: false
     symfony_root_dir: /var/www/html/project
     symfony_console_path: "{{ symfony_root_dir }}/bin/console"
@@ -13,7 +12,7 @@
   vars_prompt:
     - name: symfony_env
       prompt: "Enter the enviromment for your Symfony app (prod|dev|test)"
-      default: prod
+      default: dev
       private: no
 
   environment:
@@ -30,7 +29,6 @@
       become: true
       raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
 
-  tasks:
     - name: Upgrade installed packages
       become: true
       apt:
@@ -38,6 +36,12 @@
         name: aptitude
         force_apt_get: yes
 
+  roles:
+    - nginx
+    - role: geerlingguy.php-versions
+      become: true
+
+  tasks:
     - name: Install low-level utilities
       become: true
       apt:
@@ -51,16 +55,10 @@
         name: git
         state: latest
 
-    - name: Install Nginx web server
-      become: true
-      apt:
-        name: nginx
-        state: latest
-
-    - name: Add PHP 7 PPA repository
-      become: true
-      apt_repository:
-        repo: 'ppa:ondrej/php'
+#    - name: Add PHP 7 PPA repository
+#      become: true
+#      apt_repository:
+#        repo: 'ppa:ondrej/php'
 
     - name: Install PHP
       become: true
@@ -160,57 +158,10 @@
       tags:
         - deploy
 
-    - name: Install Composer's dependencies
-      composer:
-        working_dir: "{{ symfony_root_dir }}"
-        no_dev: "{{ 'yes' if('prod' == symfony_env) else 'no' }}"
-      tags:
-        - deploy
-
-    - name: Switch Symfony Demo to Mode Prod and Clear cache
-      command: '{{ symfony_console_path }} cache:clear --env={{ symfony_env }}'
-      changed_when: false
-      tags:
-        - deploy
-
-    - name: Add Symfony config template to the Nginx available sites
-      become: true
-      template:
-        src: templates/symfony.conf
-        dest: "/etc/nginx/sites-available/{{ server_name }}.conf"
-
-    - name: Enable Symfony config template from Nginx available sites
-      become: true
-      file:
-        src: "/etc/nginx/sites-available/{{ server_name }}.conf"
-        dest: "/etc/nginx/sites-enabled/{{ server_name }}.conf"
-        state: link
-      notify: Restart Nginx
-
-    - name: Add enabled Nginx site to /etc/hosts
-      become: true
-      lineinfile:
-        dest: /etc/hosts
-        regexp: "{{ server_name }}"
-        line: "127.0.0.1 {{ server_name }}"
-
-    - name: Fix var directory permissions
-      file:
-        path: "{{ symfony_var_dir }}"
-        state: directory
-        mode: 0777
-        recurse: yes
-      tags:
-        - permissions
-        - deploy
+  # Bootstrap Symfony app
+    - include: ./includes/symfony-bootstrap.yaml
 
   handlers:
-    - name: Restart Nginx
-      become: true
-      service:
-        name: nginx
-        state: restarted
-
     - name: Restart PHP-FPM
       become: true
       service:
