@@ -1,0 +1,8 @@
+---
+php_version: '7.3'
+php_versions_install_recommends: false
+symfony_root_dir: /var/www/html/project
+symfony_console_path: "{{ symfony_root_dir }}/bin/console"
+symfony_web_dir: "{{ symfony_root_dir }}/public"
+symfony_var_dir: "{{ symfony_root_dir }}/var"
+symfony_secret: "{{ vault_symfony_secret }}"

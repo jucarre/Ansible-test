@@ -7,6 +7,14 @@
   tags:
     - deploy
 
+- name: Set Symfony secret in parameters.yml
+  lineinfile:
+    dest: "{{ symfony_root_dir }}/.env"
+    regexp: "APP_SECRET="
+    line: "APP_SECRET={{ symfony_secret }}"
+  tags:
+    - deploy
+
 - name: Fix var directory permissions
   file:
     path: "{{ symfony_var_dir }}"

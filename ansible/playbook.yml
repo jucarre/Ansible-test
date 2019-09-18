@@ -1,13 +1,9 @@
 ---
 - hosts: vb
 
-  vars:
-    php_version: '7.3'
-    php_versions_install_recommends: false
-    symfony_root_dir: /var/www/html/project
-    symfony_console_path: "{{ symfony_root_dir }}/bin/console"
-    symfony_web_dir: "{{ symfony_root_dir }}/public"
-    symfony_var_dir: "{{ symfony_root_dir }}/var"
+  vars_files:
+    - ./vars/vault.yml
+    - ./vars/vars.yml
 
   vars_prompt:
     - name: symfony_env
@@ -25,16 +21,23 @@
       tags:
         - always
 
-    - name: Install python for Ansible
-      become: true
-      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
-
-    - name: Upgrade installed packages
+    - name: Update APT package manager repositories cache
       become: true
       apt:
         update_cache: yes
         name: aptitude
         force_apt_get: yes
+
+    - name: Upgrade installed packages
+      become: true
+      apt:
+        upgrade: safe
+
+    - name: Install python for Ansible
+      become: true
+      apt:
+        name:
+          - python-minimal
 
   roles:
     - nginx
@@ -159,7 +162,7 @@
         - deploy
 
   # Bootstrap Symfony app
-    - include: ./includes/symfony-bootstrap.yaml
+    - include: ./includes/symfony-bootstrap.yml
 
   handlers:
     - name: Restart PHP-FPM
